@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:latest
+    container_name: db_yandex
+    hostname: db
+    restart: always
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+        - 32700:5432
+    networks:
+      - db-network
+
+  backend:
+    build: .
+    container_name: backend_yandex
+    hostname: backend
+    restart: always
+    command: python main.py
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - RELOAD=FALSE
+    ports:
+      - 80:80
+    networks:
+      - db-network
+    depends_on:
+      - db
+
+
+networks:
+  db-network:
+    driver: bridge
