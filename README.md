@@ -81,6 +81,7 @@ Python библиотеки прописаны в requirements.txt:
 * psycopg2-binary
 * sqlalchemy
 * pydantic
+
 Используемые пакеты для запуска: 
 * docker
 * docker-compose
