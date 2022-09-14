@@ -73,6 +73,7 @@
 * Контейнер с API сервером
 
 Для сборки используется команда: docker-compose -f docker-compose.dev.yaml build
+
 Для запуска: docker-compose -f docker-compose.dev.yaml up
 ## Используемые библиотеки и пакеты
 Python библиотеки прописаны в requirements.txt:
