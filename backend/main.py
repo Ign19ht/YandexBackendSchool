@@ -59,7 +59,7 @@ def update_folder_size(db: Session, folder_id: str, date: datetime):
     :param folder_id: id of folder
     :param date: date of request
     """
-    crud.update_folder_size(db, folder_id)
+    crud.update_folder_size(db, folder_id, date)
     sql_folder = crud.get_item(db, folder_id)
     folder_import = schemas.SystemItemImport(id=sql_folder.id, url=sql_folder.url, parentId=sql_folder.parentId,
                                              type=sql_folder.type, size=sql_folder.size)
@@ -161,7 +161,10 @@ async def get_node(id: str):
         json_item = jsonable_encoder(sys_item)
 
         if sys_item.type == schemas.SystemItemType.FOLDER:
-            json_item['children'] = get_children(db, id)  # get data of children and compile response
+            if sys_item.size != 0:
+                json_item['children'] = get_children(db, id)  # get data of children and compile response
+            else:
+                json_item['children'] = []
         else:
             json_item['children'] = None
 
@@ -245,7 +248,11 @@ def get_children(db: Session, id: str):
             json_child = jsonable_encoder(sys_child)
 
             if sys_child.type == schemas.SystemItemType.FOLDER:
-                json_child['children'] = get_children(db, id)  # get data of children and compile response
+                if sys_child.size != 0:
+                    # get data of children of child
+                    json_child['children'] = get_children(db, sys_child.id)
+                else:
+                    json_child['children'] = []
             else:
                 json_child['children'] = None
 
