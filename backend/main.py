@@ -54,13 +54,16 @@ def check_validity(db: Session, items: schemas.SystemItemImportRequest):
 
 def update_folder_size(db: Session, folder_id: str, date: datetime):
     """
-    update size of folder
+    update size of folder and put it into history
     :param db: db session
     :param folder_id: id of folder
-    :param date: date pf request
+    :param date: date of request
     """
-    children = crud.search_children(db, folder_id)
-    crud.update_folder_size(db, folder_id, len(children), date)
+    crud.update_folder_size(db, folder_id)
+    sql_folder = crud.get_item(db, folder_id)
+    folder_import = schemas.SystemItemImport(id=sql_folder.id, url=sql_folder.url, parentId=sql_folder.parentId,
+                                             type=sql_folder.type, size=sql_folder.size)
+    crud.add_to_history(db, folder_import, date)
 
 
 # overridden exception: Validation Error
@@ -90,6 +93,10 @@ async def imports(items: schemas.SystemItemImportRequest):
         if temp:  # if object exist, then remove if for updating
             crud.delete_item(db, item.id)
         crud.add_item(db, item, items.updateDate)
+        if item.type == schemas.SystemItemType.FILE:
+            crud.add_to_history(db, item, items.updateDate)
+        else:
+            folders_id.add(item.id)  # if it's folder we should update its size before put it into history
 
         if item.parentId:  # check for update folders size in the future
             folders_id.add(item.parentId)

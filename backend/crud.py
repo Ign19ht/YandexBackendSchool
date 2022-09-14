@@ -15,13 +15,9 @@ def add_item(db: Session, item: schemas.SystemItemImport, date: datetime):
     """
     db_item = models.Items(id=item.id, url=item.url, parentId=item.parentId, size=item.size,
                            type=item.type, date=date)
-    db_history = models.History(id=item.id, url=item.url, parentId=item.parentId, size=item.size,
-                           type=item.type, date=date)
     db.add(db_item)
-    db.add(db_history)
     db.commit()
     db.refresh(db_item)
-    db.refresh(db_history)
 
 
 def delete_item(db: Session, id: str):
@@ -64,29 +60,40 @@ def get_updates(db: Session, date: datetime):
     return db.query(models.Items).filter(models.Items.date >= date).all()
 
 
+def update_folder_size(db: Session, id: str):
+    """
+    update size of folder
+    :param db: db session
+    :param id: id of file
+    """
+    children = search_children(db, id)
+    db.query(models.Items).filter(models.Items.id == id).update({"size": len(children)})
+    db.commit()
+
+
+def add_to_history(db: Session, item: schemas.SystemItemImport, date: datetime):
+    """
+    add note into history
+    :param db: db session
+    :param item: item
+    :param date: date of request
+    """
+    db_history = models.History(id=item.id, url=item.url, parentId=item.parentId, size=item.size,
+                                type=item.type, date=date)
+    db.add(db_history)
+    db.commit()
+    db.refresh(db_history)
+
+
 def remove_from_history(db: Session, id: str):
     """
     remove history of object from history table
     :param db: db session
     :param id: id of object
     """
-    db.delete(db.query(models.History).filter(models.History.id == id).all())
-    db.commit()
-
-
-def update_folder_size(db: Session, id: str, new_size: int, date: datetime):
-    """
-    update size of folder
-    :param db: db session
-    :param id: id of file
-    :param new_size: new size of folder
-    :param date: date of request
-    """
-    item = db.query(models.Items).filter(models.Items.id == id)
-    item.update({"size": new_size})
-    db_history = models.History(id=item.id, url=item.url, parentId=item.parentId, size=item.size,
-                                type=item.type, date=date)
-    db.add(db_history)
+    history_all = db.query(models.History).filter(models.History.id == id).all()
+    for history in history_all:
+        db.delete(history)
     db.commit()
 
 
