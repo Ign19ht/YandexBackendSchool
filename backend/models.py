@@ -2,6 +2,9 @@ from sqlalchemy import Column, Integer, String, DateTime
 from db_manager import DeclarativeBase
 
 
+# declare models for database
+
+
 class Items(DeclarativeBase):
     __tablename__ = 'items'
     id = Column(String, primary_key=True, index=True)
