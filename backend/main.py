@@ -52,18 +52,21 @@ def check_validity(db: Session, items: schemas.SystemItemImportRequest):
     return True
 
 
-def update_folder_size(db: Session, folder_id: str, date: datetime):
+def update_folder_size(db: Session, folder_id: str, size_delta: int, date: datetime):
     """
     update size of folder and put it into history
     :param db: db session
     :param folder_id: id of folder
+    :param size_delta: size delta
     :param date: date of request
+    :return: list of updated folders
     """
-    crud.update_folder_size(db, folder_id, date)
     sql_folder = crud.get_item(db, folder_id)
-    folder_import = schemas.SystemItemImport(id=sql_folder.id, url=sql_folder.url, parentId=sql_folder.parentId,
-                                             type=sql_folder.type, size=sql_folder.size)
-    crud.add_to_history(db, folder_import, date)
+    crud.update_folder_size(db, folder_id, sql_folder.size + size_delta, date)
+    list_updated_folders = [folder_id]
+    if sql_folder.parentId:
+        list_updated_folders += update_folder_size(db, sql_folder.parentId, size_delta, date)
+    return list_updated_folders
 
 
 # overridden exception: Validation Error
@@ -85,24 +88,51 @@ async def imports(items: schemas.SystemItemImportRequest):
         db.close()
         raise RequestValidationError("error")
 
-    folders_id = set()
+    folders_size_delta = dict()
+    new_folders = []
 
     # add each item into db
     for item in items.items:
+        if item.type == schemas.SystemItemType.FOLDER:
+            item.size = 0
+
         temp = crud.get_item(db, item.id)
-        if temp:  # if object exist, then remove if for updating
+        if temp:  # if object exist, then remove it for updating
+            if item.type == schemas.SystemItemType.FOLDER:
+                item.size = temp.size
             crud.delete_item(db, item.id)
+
         crud.add_item(db, item, items.updateDate)
-        if item.type == schemas.SystemItemType.FILE:
+
+        if item.type == schemas.SystemItemType.FILE:  # if it's folder we should update its size before put it into history
             crud.add_to_history(db, item, items.updateDate)
         else:
-            folders_id.add(item.id)  # if it's folder we should update its size before put it into history
+            new_folders.append(item.id)
 
-        if item.parentId:  # check for update folders size in the future
-            folders_id.add(item.parentId)
+        # check for update folders size
+        if temp:
+            if temp.parentId:
+                if temp.parentId in folders_size_delta:
+                    folders_size_delta[temp.parentId] = folders_size_delta[temp.parentId] - temp.size
+                else:
+                    folders_size_delta[temp.parentId] = -temp.size
+        if item.parentId:
+            if item.parentId in folders_size_delta:
+                folders_size_delta[item.parentId] = folders_size_delta[item.parentId] + item.size
+            else:
+                folders_size_delta[item.parentId] = item.size
 
-    for folder_id in folders_id:
-        update_folder_size(db, folder_id, items.updateDate)  # update folders size
+    updated_folders = set()
+    updated_folders.update(new_folders)
+
+    for folder_id in folders_size_delta:  # update folders size
+        updated_folders.update(update_folder_size(db, folder_id, folders_size_delta[folder_id], items.updateDate))
+
+    for folder_id in updated_folders:  # add to history folders updates
+        sql_folder = crud.get_item(db, folder_id)
+        folder_import = schemas.SystemItemImport(id=sql_folder.id, url=sql_folder.url, parentId=sql_folder.parentId,
+                                                 type=sql_folder.type, size=sql_folder.size)
+        crud.add_to_history(db, folder_import, items.updateDate)
 
     db.close()
     return JSONResponse(content=jsonable_encoder(schemas.Error(code=200, message="The insert or update was successful")))
@@ -123,8 +153,16 @@ async def delete(id: str, date: datetime):
             delete_children(db, id)
         crud.delete_item(db, id)
         crud.remove_from_history(db, id)
+        updated_folders = []
         if item.parentId:
-            update_folder_size(db, item.parentId, date)
+            updated_folders += update_folder_size(db, item.parentId, -item.size, date)
+
+        for folder_id in updated_folders:  # add to history folders updates
+            sql_folder = crud.get_item(db, folder_id)
+            folder_import = schemas.SystemItemImport(id=sql_folder.id, url=sql_folder.url, parentId=sql_folder.parentId,
+                                                     type=sql_folder.type, size=sql_folder.size)
+            crud.add_to_history(db, folder_import, date)
+
         db.close()
         return JSONResponse(content=jsonable_encoder(schemas.Error(code=200, message="Removal was successful")))
     else:
@@ -178,7 +216,7 @@ async def get_node(id: str):
 @app.get("/updates")
 async def get_updates(date: datetime):
     """
-    API function for returning data of updates
+    API function for returning data of updates of files
     :param date: start date of update
     :return: code and message of result
     """

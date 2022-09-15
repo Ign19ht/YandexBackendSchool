@@ -57,18 +57,19 @@ def get_updates(db: Session, date: datetime):
     :param date: start date
     :return: data of updates
     """
-    return db.query(models.Items).filter(models.Items.date >= date).all()
+    return db.query(models.Items).filter(models.Items.date >= date)\
+        .filter(models.Items.type == schemas.SystemItemType.FILE).all()
 
 
-def update_folder_size(db: Session, id: str, date: datetime):
+def update_folder_size(db: Session, id: str, new_size: int, date: datetime):
     """
     update size of folder
     :param db: db session
-    :param id: id of file
+    :param id: id of folder
+    :param new_size: new size of folder
     :param date: date of update
     """
-    children = search_children(db, id)
-    db.query(models.Items).filter(models.Items.id == id).update({"size": len(children), "date": date})
+    db.query(models.Items).filter(models.Items.id == id).update({"size": new_size, "date": date})
     db.commit()
 
 
