@@ -110,7 +110,7 @@ def get_history(db: Session, id: str, date_start: datetime, date_end: datetime):
     """
     return db.query(models.History)\
         .filter(models.History.id == id)\
-        .filter(date_end >= models.History.date)\
+        .filter(date_end > models.History.date)\
         .filter(models.History.date >= date_start).all()
 
 
@@ -135,7 +135,7 @@ def get_history_to(db: Session, id: str, date_end: datetime):
     :return: history of object
     """
     return db.query(models.History)\
-        .filter(models.History.id == id).filter(models.History.date <= date_end).all()
+        .filter(models.History.id == id).filter(models.History.date < date_end).all()
 
 
 def get_all_history(db: Session, id: str):
