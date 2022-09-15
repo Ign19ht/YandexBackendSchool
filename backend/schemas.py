@@ -15,7 +15,7 @@ class SystemItemType(str, Enum):
 class SystemItem(BaseModel):
     id: str
     url: Optional[str] = None
-    date: datetime
+    date: str
     parentId: Optional[str] = None
     type: SystemItemType
     size: Optional[int] = None
@@ -38,7 +38,7 @@ class SystemItemImportRequest(BaseModel):
 class SystemItemHistoryUnit(BaseModel):
     id: str
     url: Optional[str] = None
-    date: datetime
+    date: str
     parentId: Optional[str] = None
     type: SystemItemType
     size: Optional[int] = None
