@@ -1,17 +1,42 @@
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 import crud
 import schemas
 from db_manager import create_db, get_db
 from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
-from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from datetime import datetime, timedelta
 
 create_db()  # generate tables if they don't exist
 
 app = FastAPI()
+
+
+######################################
+# exceptions
+######################################
+class ItemNotFound(Exception):
+    def __init__(self, name: str):
+        self.name = name
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=jsonable_encoder(schemas.Error(code=400, message="Validation Failed")),
+    )
+
+
+@app.exception_handler(ItemNotFound)
+async def unicorn_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content=jsonable_encoder(schemas.Error(code=404, message="Item not found")),
+    )
+######################################
 
 
 def check_validity(db: Session, items: schemas.SystemItemImportRequest):
@@ -21,6 +46,8 @@ def check_validity(db: Session, items: schemas.SystemItemImportRequest):
     :param items: items for checking
     :return: result of checking
     """
+    if items.items is None:
+        return False
     import_files = dict()
     for item in items.items:
         if item.id in import_files:
@@ -67,12 +94,6 @@ def update_folder_size(db: Session, folder_id: str, size_delta: int, date: datet
     if sql_folder.parentId:
         list_updated_folders += update_folder_size(db, sql_folder.parentId, size_delta, date)
     return list_updated_folders
-
-
-# overridden exception: Validation Error
-@app.exception_handler(RequestValidationError)
-async def http_exception_handler(request, exc):
-    return JSONResponse(content=jsonable_encoder(schemas.Error(code=400, message="Validation Failed")))
 
 
 @app.post("/imports")
@@ -167,7 +188,7 @@ async def delete(id: str, date: datetime):
         return JSONResponse(content=jsonable_encoder(schemas.Error(code=200, message="Removal was successful")))
     else:
         db.close()
-        return JSONResponse(content=jsonable_encoder(schemas.Error(code=404, message="Item not found")))
+        raise ItemNotFound("error")
 
 
 def delete_children(db: Session, id: str):
@@ -194,7 +215,8 @@ async def get_node(id: str):
     db = get_db()
     sql_item = crud.get_item(db, id)
     if sql_item:  # check for existing of object
-        sys_item = schemas.SystemItem(id=sql_item.id, url=sql_item.url, date=sql_item.date,
+        fix_date = sql_item.date.isoformat() + "Z"
+        sys_item = schemas.SystemItem(id=sql_item.id, url=sql_item.url, date=fix_date,
                                       parentId=sql_item.parentId, type=sql_item.type, size=sql_item.size)
         json_item = jsonable_encoder(sys_item)
 
@@ -210,7 +232,7 @@ async def get_node(id: str):
         return JSONResponse(content=json_item)
     else:
         db.close()
-        return JSONResponse(content=jsonable_encoder(schemas.Error(code=404, message="Item not found")))
+        raise ItemNotFound("error")
 
 
 @app.get("/updates")
@@ -226,7 +248,8 @@ async def get_updates(date: datetime):
 
     json_items = []
     for sql_item in sql_items:  # compile response
-        history_item = schemas.SystemItemHistoryUnit(id=sql_item.id, url=sql_item.url, date=sql_item.date,
+        fix_date = sql_item.date.isoformat() + "Z"
+        history_item = schemas.SystemItemHistoryUnit(id=sql_item.id, url=sql_item.url, date=fix_date,
                                       parentId=sql_item.parentId, type=sql_item.type, size=sql_item.size)
         json_items.append(jsonable_encoder(history_item))
 
@@ -260,14 +283,15 @@ async def get_history(id: str, dateStart: datetime = None, dateEnd: datetime = N
         db.close()
 
         for sql_history_item in sql_history:  # compile response
+            fix_date = sql_history_item.date.isoformat() + "Z"
             history.append(schemas.SystemItemHistoryUnit(id=sql_history_item.id, url=sql_history_item.url,
-                                                         date=sql_history_item.date, parentId=sql_history_item.parentId,
+                                                         date=fix_date, parentId=sql_history_item.parentId,
                                                          type=sql_history_item.type, size=sql_history_item.size))
 
         history_response = schemas.SystemItemHistoryResponse(items=history)
         return JSONResponse(content=jsonable_encoder(history_response))
     else:
-        return JSONResponse(content=jsonable_encoder(schemas.Error(code=404, message="Item not found")))
+        raise ItemNotFound("error")
 
 
 def get_children(db: Session, id: str):
@@ -281,7 +305,8 @@ def get_children(db: Session, id: str):
     if sql_children:  # check for children existing
         json_children = []
         for sql_child in sql_children:
-            sys_child = schemas.SystemItem(id=sql_child.id, url=sql_child.url, date=sql_child.date,
+            fix_date = sql_child.date.isoformat() + "Z"
+            sys_child = schemas.SystemItem(id=sql_child.id, url=sql_child.url, date=fix_date,
                                            parentId=sql_child.parentId, type=sql_child.type, size=sql_child.size)
             json_child = jsonable_encoder(sys_child)
 
